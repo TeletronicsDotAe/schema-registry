@@ -186,8 +186,10 @@ public abstract class AbstractKafkaAvroDeserializer extends AbstractKafkaAvroSer
         readerSchema = getReaderSchema(writerSchema);
       }
       final Schema theReaderSchema = readerSchema;
-      return datumReaderCache.computeIfAbsent(writerSchema.getFullName(), schema ->
-              new SpecificDatumReader<>(writerSchema, theReaderSchema));
+      return datumReaderCache.computeIfAbsent(
+              String.join("|", writerSchema.getFullName(), readerSchema.getFullName()), schema ->
+                      new SpecificDatumReader<>(writerSchema, theReaderSchema)
+      );
     } else {
       if (readerSchema == null) {
         return new GenericDatumReader<>(writerSchema);
