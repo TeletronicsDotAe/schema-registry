@@ -26,6 +26,7 @@ import io.confluent.kafka.schemaregistry.protobuf.ProtobufSchemaUtils;
 import io.confluent.kafka.schemaregistry.tools.SchemaRegistryPerformance;
 import io.confluent.kafka.serializers.AbstractKafkaSchemaSerDeConfig;
 import io.confluent.kafka.serializers.KafkaAvroDeserializer;
+import io.confluent.kafka.serializers.KafkaAvroDeserializerConfig;
 import io.confluent.kafka.serializers.KafkaAvroSerializer;
 import io.confluent.kafka.serializers.json.KafkaJsonSchemaDeserializer;
 import io.confluent.kafka.serializers.json.KafkaJsonSchemaSerializer;
@@ -38,6 +39,7 @@ import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableMap;
+import org.apache.avro.util.Utf8;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.Serializer;
 import org.openjdk.jmh.annotations.Benchmark;
@@ -88,7 +90,8 @@ public class SerdeBenchmark {
       final SchemaRegistryClient schemaRegistryClient = new MockSchemaRegistryClient();
       final ImmutableMap<String, Object> configs = ImmutableMap.of(
           AbstractKafkaSchemaSerDeConfig.AUTO_REGISTER_SCHEMAS, true,
-          AbstractKafkaSchemaSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG, ""
+          AbstractKafkaSchemaSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG, "",
+          KafkaAvroDeserializerConfig.SPECIFIC_AVRO_READER_CONFIG, "true"
       );
 
       switch (serializationFormat) {
@@ -109,7 +112,7 @@ public class SerdeBenchmark {
           throw new RuntimeException("Invalid format: " + serializationFormat);
       }
       schema  = SchemaRegistryPerformance.makeParsedSchema(serializationFormat, 1);
-      row  = makeRecord(schema);
+      row = new myrecord(new Utf8("foo"));
       bytes = serializer.serialize(TOPIC_NAME, row);
     }
   }
@@ -164,8 +167,8 @@ public class SerdeBenchmark {
 
   @SuppressWarnings("MethodMayBeStatic") // Tests can not be static
   @Benchmark
-  public Object deserialize(final SerdeState serdeState) {
-    return serdeState.deserializer.deserialize(TOPIC_NAME, serdeState.bytes);
+  public myrecord deserialize(final SerdeState serdeState) {
+    return (myrecord) serdeState.deserializer.deserialize(TOPIC_NAME, serdeState.bytes);
   }
 
   public static void main(final String[] args) throws Exception {
