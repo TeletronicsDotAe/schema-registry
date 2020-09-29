@@ -28,7 +28,13 @@ import io.confluent.kafka.schemaregistry.client.security.SslFactory;
 import org.apache.avro.Schema;
 
 import java.io.IOException;
-import java.util.*;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
@@ -216,7 +222,10 @@ public class CachedSchemaRegistryClient implements SchemaRegistryClient {
       throws IOException, RestClientException {
 
     final Map<Integer, Schema> idSchemaMap = idCache
-        .computeIfAbsent(subject, k -> new ConcurrentHashMap<>());
+        .computeIfAbsent(
+                Optional.ofNullable(subject)
+                .orElse(NO_SUBJECT_KEY), k -> new ConcurrentHashMap<>()
+        );
 
     try {
       return idSchemaMap.computeIfAbsent(id, i -> {
