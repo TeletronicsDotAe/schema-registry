@@ -16,18 +16,6 @@
 
 package io.confluent.kafka.schemaregistry.client;
 
-import java.util.Collections;
-import java.util.Objects;
-
-import org.apache.avro.Schema;
-
-import java.io.IOException;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-
 import io.confluent.kafka.schemaregistry.client.rest.RestService;
 import io.confluent.kafka.schemaregistry.client.rest.Versions;
 import io.confluent.kafka.schemaregistry.client.rest.entities.Config;
@@ -37,6 +25,13 @@ import io.confluent.kafka.schemaregistry.client.rest.entities.requests.ModeGetRe
 import io.confluent.kafka.schemaregistry.client.rest.entities.requests.ModeUpdateRequest;
 import io.confluent.kafka.schemaregistry.client.rest.exceptions.RestClientException;
 import io.confluent.kafka.schemaregistry.client.security.SslFactory;
+import org.apache.avro.Schema;
+
+import java.io.IOException;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.stream.Collectors;
 
 
 /**
@@ -47,10 +42,11 @@ public class CachedSchemaRegistryClient implements SchemaRegistryClient {
   private final RestService restService;
   private final int identityMapCapacity;
   private final Map<String, Map<Schema, Integer>> schemaCache;
-  private final Map<String, Map<Integer, Schema>> idCache;
+  private final ConcurrentMap<String, ConcurrentMap<Integer, Schema>> idCache;
   private final Map<String, Map<Schema, Integer>> versionCache;
 
   public static final Map<String, String> DEFAULT_REQUEST_PROPERTIES;
+  private static final String NO_SUBJECT_KEY = "NO_SUBJECT_KEY";
 
   static {
     DEFAULT_REQUEST_PROPERTIES =
@@ -112,11 +108,11 @@ public class CachedSchemaRegistryClient implements SchemaRegistryClient {
       Map<String, ?> configs,
       Map<String, String> httpHeaders) {
     this.identityMapCapacity = identityMapCapacity;
-    this.schemaCache = new HashMap<String, Map<Schema, Integer>>();
-    this.idCache = new HashMap<String, Map<Integer, Schema>>();
-    this.versionCache = new HashMap<String, Map<Schema, Integer>>();
+    this.schemaCache = new HashMap<>();
+    this.idCache = new ConcurrentHashMap<>();
+    this.versionCache = new HashMap<>();
     this.restService = restService;
-    this.idCache.put(null, new HashMap<Integer, Schema>());
+    this.idCache.put(NO_SUBJECT_KEY, new ConcurrentHashMap<>());
     if (httpHeaders != null) {
       restService.setHttpHeaders(httpHeaders);
     }
@@ -129,7 +125,7 @@ public class CachedSchemaRegistryClient implements SchemaRegistryClient {
               e -> e.getKey().substring(SchemaRegistryClientConfig.CLIENT_NAMESPACE.length()),
               Map.Entry::getValue));
       SslFactory sslFactory = new SslFactory(sslConfigs);
-      if (sslFactory != null && sslFactory.sslContext() != null) {
+      if (sslFactory.sslContext() != null) {
         restService.setSslSocketFactory(sslFactory.sslContext().getSocketFactory());
       }
     }
@@ -195,7 +191,7 @@ public class CachedSchemaRegistryClient implements SchemaRegistryClient {
                             ? registerAndGetId(subject, schema, version, id)
                             : registerAndGetId(subject, schema);
     schemaIdMap.put(schema, retrievedId);
-    idCache.get(null).put(retrievedId, schema);
+    idCache.get(NO_SUBJECT_KEY).put(retrievedId, schema);
     return retrievedId;
   }
 
@@ -205,7 +201,7 @@ public class CachedSchemaRegistryClient implements SchemaRegistryClient {
   }
 
   @Override
-  public synchronized Schema getById(int id) throws IOException, RestClientException {
+  public Schema getById(int id) throws IOException, RestClientException {
     return getBySubjectAndId(null, id);
   }
 
@@ -216,20 +212,30 @@ public class CachedSchemaRegistryClient implements SchemaRegistryClient {
   }
 
   @Override
-  public synchronized Schema getBySubjectAndId(String subject, int id)
+  public Schema getBySubjectAndId(String subject, int id)
       throws IOException, RestClientException {
 
     final Map<Integer, Schema> idSchemaMap = idCache
-        .computeIfAbsent(subject, k -> new HashMap<>());
+        .computeIfAbsent(subject, k -> new ConcurrentHashMap<>());
 
-    final Schema cachedSchema = idSchemaMap.get(id);
-    if (cachedSchema != null) {
-      return cachedSchema;
+    try {
+      return idSchemaMap.computeIfAbsent(id, i -> {
+        try {
+          return getSchemaByIdFromRegistry(i);
+        } catch (IOException | RestClientException e) {
+          throw new RuntimeException(e);
+        }
+      });
+    } catch (Exception e) {
+      Throwable cause = e.getCause();
+      if (cause instanceof IOException) {
+        throw (IOException) cause;
+      } else if (cause instanceof RestClientException) {
+        throw (RestClientException) cause;
+      } else {
+        throw e;
+      }
     }
-
-    final Schema retrievedSchema = getSchemaByIdFromRegistry(id);
-    idSchemaMap.put(id, retrievedSchema);
-    return retrievedSchema;
   }
 
   @Override
@@ -301,7 +307,7 @@ public class CachedSchemaRegistryClient implements SchemaRegistryClient {
 
     final int retrievedId = getIdFromRegistry(subject, schema);
     schemaIdMap.put(schema, retrievedId);
-    idCache.get(null).put(retrievedId, schema);
+    idCache.get(NO_SUBJECT_KEY).put(retrievedId, schema);
     return retrievedId;
   }
 
@@ -395,6 +401,6 @@ public class CachedSchemaRegistryClient implements SchemaRegistryClient {
     schemaCache.clear();
     idCache.clear();
     versionCache.clear();
-    idCache.put(null, new HashMap<Integer, Schema>());
+    idCache.put(NO_SUBJECT_KEY, new ConcurrentHashMap<>());
   }
 }
