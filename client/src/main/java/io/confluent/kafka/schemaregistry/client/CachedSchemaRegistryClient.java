@@ -47,6 +47,9 @@ import io.confluent.kafka.schemaregistry.client.rest.entities.requests.ModeUpdat
 import io.confluent.kafka.schemaregistry.client.rest.exceptions.RestClientException;
 import io.confluent.kafka.schemaregistry.client.security.SslFactory;
 
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+
 
 /**
  * Thread-safe Schema Registry Client with client side caching.
@@ -58,11 +61,12 @@ public class CachedSchemaRegistryClient implements SchemaRegistryClient {
   private final RestService restService;
   private final int identityMapCapacity;
   private final Map<String, Map<ParsedSchema, Integer>> schemaCache;
-  private final Map<String, Map<Integer, ParsedSchema>> idCache;
+  private final ConcurrentMap<String, ConcurrentMap<Integer, ParsedSchema>> idCache;
   private final Map<String, Map<ParsedSchema, Integer>> versionCache;
   private final Map<String, SchemaProvider> providers;
 
   public static final Map<String, String> DEFAULT_REQUEST_PROPERTIES;
+  private static final String NO_SUBJECT_KEY = "NO_SUBJECT_KEY";
 
   static {
     DEFAULT_REQUEST_PROPERTIES =
@@ -151,10 +155,10 @@ public class CachedSchemaRegistryClient implements SchemaRegistryClient {
       Map<String, String> httpHeaders) {
     this.identityMapCapacity = identityMapCapacity;
     this.schemaCache = new HashMap<String, Map<ParsedSchema, Integer>>();
-    this.idCache = new HashMap<String, Map<Integer, ParsedSchema>>();
+    this.idCache = new ConcurrentHashMap<>();
     this.versionCache = new HashMap<String, Map<ParsedSchema, Integer>>();
     this.restService = restService;
-    this.idCache.put(null, new HashMap<Integer, ParsedSchema>());
+    this.idCache.put(NO_SUBJECT_KEY, new ConcurrentHashMap<>());
     this.providers = providers != null && !providers.isEmpty()
                      ? providers.stream().collect(Collectors.toMap(p -> p.schemaType(), p -> p))
                      : Collections.singletonMap(AvroSchema.TYPE, new AvroSchemaProvider());
@@ -175,7 +179,7 @@ public class CachedSchemaRegistryClient implements SchemaRegistryClient {
               e -> e.getKey().substring(SchemaRegistryClientConfig.CLIENT_NAMESPACE.length()),
               Map.Entry::getValue));
       SslFactory sslFactory = new SslFactory(sslConfigs);
-      if (sslFactory != null && sslFactory.sslContext() != null) {
+      if (sslFactory.sslContext() != null) {
         restService.setSslSocketFactory(sslFactory.sslContext().getSocketFactory());
       }
     }
@@ -267,21 +271,21 @@ public class CachedSchemaRegistryClient implements SchemaRegistryClient {
                             ? registerAndGetId(subject, schema, version, id)
                             : registerAndGetId(subject, schema);
     schemaIdMap.put(schema, retrievedId);
-    idCache.get(null).put(retrievedId, schema);
+    idCache.get(NO_SUBJECT_KEY).put(retrievedId, schema);
     return retrievedId;
   }
 
   @Override
-  public synchronized ParsedSchema getSchemaById(int id) throws IOException, RestClientException {
+  public ParsedSchema getSchemaById(int id) throws IOException, RestClientException {
     return getSchemaBySubjectAndId(null, id);
   }
 
   @Override
-  public synchronized ParsedSchema getSchemaBySubjectAndId(String subject, int id)
+  public ParsedSchema getSchemaBySubjectAndId(String subject, int id)
       throws IOException, RestClientException {
 
-    final Map<Integer, ParsedSchema> idSchemaMap = idCache
-        .computeIfAbsent(subject, k -> new HashMap<>());
+    final ConcurrentMap<Integer, ParsedSchema> idSchemaMap = idCache
+        .computeIfAbsent(subject, k -> new ConcurrentHashMap<>());
 
     final ParsedSchema cachedSchema = idSchemaMap.get(id);
     if (cachedSchema != null) {
@@ -381,7 +385,7 @@ public class CachedSchemaRegistryClient implements SchemaRegistryClient {
 
     final int retrievedId = getIdFromRegistry(subject, schema);
     schemaIdMap.put(schema, retrievedId);
-    idCache.get(null).put(retrievedId, schema);
+    idCache.get(NO_SUBJECT_KEY).put(retrievedId, schema);
     return retrievedId;
   }
 
@@ -476,6 +480,6 @@ public class CachedSchemaRegistryClient implements SchemaRegistryClient {
     schemaCache.clear();
     idCache.clear();
     versionCache.clear();
-    idCache.put(null, new HashMap<Integer, ParsedSchema>());
+    idCache.put(NO_SUBJECT_KEY, new ConcurrentHashMap<>());
   }
 }
