@@ -10,7 +10,7 @@
         <version>5.4.2</version>
     </parent>
 
-    <version>5.4.2-tlt-4</version>
+    <version>5.4.2-tlt-5-SNAPSHOT</version>
     <artifactId>kafka-schema-registry-parent</artifactId>
     <packaging>pom</packaging>
     <name>kafka-schema-registry-parent</name>
