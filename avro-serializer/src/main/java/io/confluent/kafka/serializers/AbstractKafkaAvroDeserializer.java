@@ -41,7 +41,7 @@ public abstract class AbstractKafkaAvroDeserializer extends AbstractKafkaAvroSer
   private final DecoderFactory decoderFactory = DecoderFactory.get();
   protected boolean useSpecificAvroReader = false;
   private final Map<String, Schema> readerSchemaCache = new ConcurrentHashMap<>();
-  private final Map<String, DatumReader<?>> datumReaderCache = new ConcurrentHashMap<>();
+  private final Map<SchemaPair, DatumReader<?>> datumReaderCache = new ConcurrentHashMap<>();
 
   /**
    * Sets properties for this deserializer without overriding the schema registry client itself.
@@ -186,11 +186,9 @@ public abstract class AbstractKafkaAvroDeserializer extends AbstractKafkaAvroSer
         readerSchema = getReaderSchema(writerSchema);
       }
       final Schema theReaderSchema = readerSchema;
-      String schemaCacheKeyName = (writerSchema.getFullName().equals(readerSchema.getFullName()))
-              ? writerSchema.getFullName()
-              : writerSchema.getFullName() + readerSchema.getFullName();
+      SchemaPair cacheKey = new SchemaPair(writerSchema, theReaderSchema);
       return datumReaderCache.computeIfAbsent(
-              schemaCacheKeyName, schema ->
+              cacheKey, schema ->
                       new SpecificDatumReader<>(writerSchema, theReaderSchema)
       );
     } else {
