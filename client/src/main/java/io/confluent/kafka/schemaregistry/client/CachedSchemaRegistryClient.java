@@ -285,7 +285,10 @@ public class CachedSchemaRegistryClient implements SchemaRegistryClient {
       throws IOException, RestClientException {
 
     final ConcurrentMap<Integer, ParsedSchema> idSchemaMap = idCache
-        .computeIfAbsent(subject, k -> new ConcurrentHashMap<>());
+        .computeIfAbsent(
+                Optional.ofNullable(subject)
+                        .orElse(NO_SUBJECT_KEY), k -> new ConcurrentHashMap<>()
+        );
 
     final ParsedSchema cachedSchema = idSchemaMap.get(id);
     if (cachedSchema != null) {
