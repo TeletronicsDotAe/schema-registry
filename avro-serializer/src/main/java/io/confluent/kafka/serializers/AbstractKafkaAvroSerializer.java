@@ -104,11 +104,11 @@ public abstract class AbstractKafkaAvroSerializer extends AbstractKafkaSchemaSer
         DatumWriter<Object> writer;
         writer = datumWriterCache.computeIfAbsent(rawSchema, v -> {
           if (value instanceof SpecificRecord) {
-              return new SpecificDatumWriter<>(rawSchema);
+            return new SpecificDatumWriter<>(rawSchema);
           } else if (useSchemaReflection) {
-              return new ReflectDatumWriter<>(rawSchema);
+            return new ReflectDatumWriter<>(rawSchema);
           } else {
-              return new GenericDatumWriter<>(rawSchema);
+            return new GenericDatumWriter<>(rawSchema);
           }
         });
         writer.write(value, encoder);
