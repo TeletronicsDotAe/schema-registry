@@ -99,6 +99,18 @@
 
     <dependencyManagement>
         <dependencies>
+            <!--this is for children-->
+            <dependency>
+                <groupId>io.confluent</groupId>
+                <artifactId>rest-utils</artifactId>
+                <version>6.0.0</version>
+            </dependency>
+            <dependency>
+                <groupId>io.confluent</groupId>
+                <artifactId>rest-utils-test</artifactId>
+                <version>6.0.0</version>
+                <scope>test</scope>
+            </dependency>
             <dependency>
                 <groupId>org.apache.avro</groupId>
                 <artifactId>avro</artifactId>
